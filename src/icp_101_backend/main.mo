@@ -5,231 +5,158 @@ import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
-import Buffer "mo:base/Buffer";
+
 actor {
-  type Task={
-    nameoftask:Text;
-    id:Text;
-    description:Text;
-  };
-  type Employee={
-    name:Text;
-    id:Text;
-    tasks:[Task];
-    salary:Nat64;
-    rank:Text
-  };
-  type Company={
-    name:Text;
-    owner:Principal;
-    employess:[Employee];
-    created_at:Time.Time;
+  // Define types for Task, Employee, and Company
+  type Task = {
+    nameOfTask: Text;
+    id: Text;
+    description: Text;
   };
 
+  type Employee = {
+    name: Text;
+    id: Text;
+    tasks: [Task];
+    salary: Nat64;
+    rank: Text;
+  };
 
-  type Result<Ok,Err> =Result.Result<Ok,Err>;
+  type Company = {
+    name: Text;
+    owner: Principal;
+    employees: [Employee];
+    createdAt: Time.Time;
+  };
 
+  // Initialize HashMaps to store companies and employees
+  let companies = HashMap.HashMap<Text, Company>(0, Text.equal, Text.hash);
+  let employeesRecord = HashMap.HashMap<Text, Employee>(1, Text.equal, Text.hash);
 
-  let companies =HashMap.HashMap<Text,Company>(0,Text.equal,Text.hash);
-  let employessrecord=HashMap.HashMap<Text,Employee>(1,Text.equal,Text.hash);
-
-  public query func greet(name : Text) : async Text {
+  // Greet function for testing
+  public query func greet(name: Text): async Text {
     return "Hello, " # name # "!";
   };
 
-  //registe compay
-
-  public shared ({caller}) func create_company(name:Text):async Result.Result<Text,Text>{
-    //check if the name of the company is already taken
-
-    switch(companies.get(name)){
-      case (null){
-        //register company
-
-        let new_company:Company={
-          name=name;
-          owner=caller;
-          employess=[];
-          created_at=Time.now();
+  // Register a new company
+  public shared ({caller}) func create_company(name: Text): async Result.Result<Text, Text> {
+    switch (companies.get(name)) {
+      case (null) {
+        let newCompany: Company = {
+          name = name;
+          owner = caller;
+          employees = [];
+          createdAt = Time.now();
         };
-
-        companies.put(name,new_company);
-        return #ok("company created successfully")
+        companies.put(name, newCompany);
+        return #ok("Company created successfully");
       };
-      case(?_found){
-        return #err("company already exists")
+      case (?_) {
+        return #err("Company already exists");
       }
     }
   };
-  //add employees
 
-   public shared ({caller}) func add_employee(companyname:Text,nameofemployee:Text,salary:Nat64,rank:Text):async Result.Result<Text,Text>{
-
-    //check if the comapny exists
-
-    switch(companies.get(companyname)){
-      case (null){
-        return #err("company not found");
+  // Add an employee to a company
+  public shared ({caller}) func add_employee(companyName: Text, employeeName: Text, salary: Nat64, rank: Text): async Result.Result<Text, Text> {
+    switch (companies.get(companyName)) {
+      case (null) {
+        return #err("Company not found");
       };
-      case(?found){
-        //check if its the owner performing the action
-         if (Principal.equal(caller, found.owner)) {
-          //add employee
-           let id:Text=Int.toText(Time.now());
-          let new_employee:Employee={
-            id=id;
-            name=nameofemployee;
-            salary=salary;
-            rank=rank;
-            tasks=[];
-          };
-
-          //update comapnies data
-
-          //firts convert the employess array to buffer
-          let employeesBuffer=Buffer.fromArray<Employee>(found.employess);
-
-          employeesBuffer.add(new_employee);
-          
-          //reconvert employees buffer to array
-          let updatedemployeearray=Buffer.toArray(employeesBuffer);
-
-          //uuupdate the company data
-          let update_company:Company={
-            owner=found.owner;
-            name=found.name;
-            created_at=found.created_at;
-            employess=updatedemployeearray;
-          };
-
-          //update hashmap
-          companies.put(found.name,update_company);
-           employessrecord.put(id,new_employee);
-         
-          return #ok("successfully added employee");
-
-            } else {
-                return #err("only owner is allowed to perform this action");
-            }
-      }
-    };
-   };
-    //get an employess
-    public query func get_employee_details(employeeid:Text):async Result.Result<Employee,Text>{
-      //verify if the  exists
-      switch( employessrecord.get(employeeid)){
-        case(null){
-          return #err("employee not found");
+      case (?company) {
+        if (!Principal.equal(caller, company.owner)) {
+          return #err("Only the owner is allowed to add employees");
         };
-        case(?found){
-          return #ok(found)
-        }
-      }
-    };
-    //remove an employee
-
-    public shared ({caller}) func remove_employee(employeeid:Text,companyname:Text):async Result.Result<Text,Text>{
-
-      //check if the comapny exists
-      switch(companies.get(companyname)){
-        case(null){
-          return #err("compny ith given name not found");
-        };
-        case(?found){
-
-          //verify its the owner perfroming the action
-            if (Principal.equal(caller, found.owner)) {
-          //covert employess array to buffer inorder to mapfilter it
-             let bufferArray=Buffer.fromArray<Employee>(found.employess);
-
-             let newbuffer=Buffer.mapFilter<Employee,Employee>(bufferArray,func(x){
-
-              if(x.id==employeeid){
-                 null;
-              }else{
-                ?x
-              }
-             });
-             //reconvert newbbuffer to array
-             let newarray=Buffer.toArray(newbuffer);
-             //update the companies data
-               let update_company:Company={
-                 owner=found.owner;
-                 name=found.name;
-                  created_at=found.created_at;
-                 employess=newarray;
-              };
-                companies.put(found.name,update_company);
-                 employessrecord.delete(employeeid);
-             return #ok("employee removed successfully");
-            };
-            return #err("fas");
-        }
-      }
-    };
-    //get all employess
-    public query func get_all_employees(companyname:Text):async Result.Result<[Employee],Text>{
-
-      //verify if the company exists
-      switch(companies.get(companyname)){
-        case(null){
-          return #err("company does not exists");
-        };
-        case(?found){
-          return #ok(found.employess)
-        }
-      }
-    };
-     //assigns tasks to employess
-     public shared ({caller}) func assign_tasks(companyname:Text,employeeid:Text,nameoftask:Text,description:Text):async Result.Result<Text,Text>{
-         //verify if the company exists
-      switch(companies.get(companyname)){
-        case(null){
-          return #err("company does not exists");
-        };
-        case(?_found){
-          //verify if employee exists
-           switch(employessrecord.get(employeeid)){
-            case (null){
-              return #err("employee not found");
-            };
-            case(?employee){
-              //create a new task
-               let id:Text=Int.toText(Time.now());
-              let new_task:Task={
-                id;
-                nameoftask;
-                 description
-
-              };
-
-              let employeeBuffer=Buffer.fromArray<Task>(employee.tasks);
-              employeeBuffer.add(new_task);
-              let update_employee=Buffer.toArray(employeeBuffer);
-                let updated:Employee={
-                 id=employee.id;
-                 name=employee.name;
-                 salary=employee.salary;
-                 rank=employee.rank;
-                 tasks=update_employee;
-               };
-
-              //update employee status
-               employessrecord.put(id,updated);
         
-               return #ok("assigned tasks successfuly");
+        let employeeId = Int.toText(Time.now());
+        let newEmployee: Employee = {
+          id = employeeId;
+          name = employeeName;
+          salary = salary;
+          rank = rank;
+          tasks = [];
+        };
 
-            }
-           }
-         
+        company.employees := Array.append(company.employees, [newEmployee]);
+        companies.put(companyName, company);
+        employeesRecord.put(employeeId, newEmployee);
+
+        return #ok("Employee added successfully");
+      }
+    }
+  };
+
+  // Get details of a specific employee by ID
+  public query func get_employee_details(employeeId: Text): async Result.Result<Employee, Text> {
+    switch (employeesRecord.get(employeeId)) {
+      case (null) {
+        return #err("Employee not found");
+      };
+      case (?employee) {
+        return #ok(employee);
+      }
+    }
+  };
+
+  // Remove an employee from a company
+  public shared ({caller}) func remove_employee(employeeId: Text, companyName: Text): async Result.Result<Text, Text> {
+    switch (companies.get(companyName)) {
+      case (null) {
+        return #err("Company not found");
+      };
+      case (?company) {
+        if (!Principal.equal(caller, company.owner)) {
+          return #err("Only the owner can remove employees");
+        };
+
+        let updatedEmployees = Array.filter(company.employees, func (e) { e.id != employeeId });
+        company.employees := updatedEmployees;
+        companies.put(companyName, company);
+        employeesRecord.delete(employeeId);
+
+        return #ok("Employee removed successfully");
+      }
+    }
+  };
+
+  // Get a list of all employees in a company
+  public query func get_all_employees(companyName: Text): async Result.Result<[Employee], Text> {
+    switch (companies.get(companyName)) {
+      case (null) {
+        return #err("Company not found");
+      };
+      case (?company) {
+        return #ok(company.employees);
+      }
+    }
+  };
+
+  // Assign a task to an employee
+  public shared ({caller}) func assign_tasks(companyName: Text, employeeId: Text, taskName: Text, description: Text): async Result.Result<Text, Text> {
+    switch (companies.get(companyName)) {
+      case (null) {
+        return #err("Company not found");
+      };
+      case (?_) {
+        switch (employeesRecord.get(employeeId)) {
+          case (null) {
+            return #err("Employee not found");
+          };
+          case (?employee) {
+            let taskId = Int.toText(Time.now());
+            let newTask: Task = {
+              id = taskId;
+              nameOfTask = taskName;
+              description = description;
+            };
+
+            employee.tasks := Array.append(employee.tasks, [newTask]);
+            employeesRecord.put(employeeId, employee);
+
+            return #ok("Task assigned successfully");
+          }
         }
       }
-
-     }
-   }
-  //remove employess
-  //assign tasks to employees
-  //reasigns tasks to employeess
-  //get all employeess
-  //get an employess
-
+    }
+  }
+};
